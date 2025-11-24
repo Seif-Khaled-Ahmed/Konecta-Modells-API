@@ -12,6 +12,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import io
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
 # Prophet and ARIMA imports
@@ -22,6 +23,12 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# Create data directory if it doesn't exist
+import tempfile
+DATA_DIR = os.path.join(tempfile.gettempdir(), "uploaded_data")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
 
 # Page configuration
 st.set_page_config(
@@ -48,6 +55,13 @@ st.markdown("""
         padding: 20px;
         text-align: center;
         margin: 20px 0;
+    }
+    /* Fix metric label and value colors */
+    [data-testid="stMetricLabel"] {
+        color: #0e1117 !important;
+    }
+    [data-testid="stMetricValue"] {
+        color: #0e1117 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -289,6 +303,50 @@ elif page == "📤 Upload Data":
     st.title("📤 Upload Financial Data")
     st.markdown("Upload your financial dataset (CSV or Excel format)")
     
+    # Show previously uploaded files
+    if os.path.exists(DATA_DIR) and os.listdir(DATA_DIR):
+        with st.expander("📂 Previously Uploaded Files", expanded=False):
+            uploaded_files_list = sorted(os.listdir(DATA_DIR), reverse=True)
+            st.markdown(f"**Total files saved:** {len(uploaded_files_list)}")
+            
+            # Option to load a previous file
+            selected_file = st.selectbox(
+                "Select a file to load:",
+                [""] + uploaded_files_list,
+                format_func=lambda x: "-- Select a file --" if x == "" else x
+            )
+            
+            if selected_file and st.button("📂 Load Selected File", type="primary"):
+                try:
+                    filepath = os.path.join(DATA_DIR, selected_file)
+                    
+                    # Read file based on extension
+                    if selected_file.endswith('.csv'):
+                        df = pd.read_csv(filepath)
+                    else:
+                        df = pd.read_excel(filepath)
+                    
+                    st.session_state.data = df
+                    st.success(f"✅ Loaded file: **{selected_file}**")
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error loading file: {str(e)}")
+            
+            st.markdown("---")
+            st.markdown("**All saved files:**")
+            for idx, filename in enumerate(uploaded_files_list[:10], 1):
+                filepath = os.path.join(DATA_DIR, filename)
+                file_size = os.path.getsize(filepath)
+                file_size_kb = file_size / 1024
+                st.text(f"{idx}. {filename} ({file_size_kb:.1f} KB)")
+            
+            if len(uploaded_files_list) > 10:
+                st.text(f"... and {len(uploaded_files_list) - 10} more files")
+    
+    st.markdown("---")
+    st.markdown("### Or Upload a New File")
+    
     uploaded_file = st.file_uploader(
         "Choose a file",
         type=['csv', 'xlsx', 'xls'],
@@ -303,8 +361,21 @@ elif page == "📤 Upload Data":
             else:
                 df = pd.read_excel(uploaded_file)
             
+            # Save file locally with timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            file_extension = uploaded_file.name.split('.')[-1]
+            saved_filename = f"{uploaded_file.name.rsplit('.', 1)[0]}_{timestamp}.{file_extension}"
+            saved_filepath = os.path.join(DATA_DIR, saved_filename)
+            
+            # Save the file
+            if uploaded_file.name.endswith('.csv'):
+                df.to_csv(saved_filepath, index=False)
+            else:
+                df.to_excel(saved_filepath, index=False)
+            
             st.session_state.data = df
             st.success(f"✅ File uploaded successfully: **{uploaded_file.name}**")
+            st.info(f"📁 File saved locally: `{saved_filepath}`")
             
             # Basic info
             st.markdown("---")
@@ -975,16 +1046,18 @@ elif page == "📊 Model Comparison":
             # Bar chart of metrics
             fig = go.Figure()
             
-            metrics_to_plot = ['MAE', 'RMSE', 'MAPE']
+            metrics_to_plot = ['MAE', 'RMSE', 'MAPE (%)']
             for metric in metrics_to_plot:
-                row = comparison_df[comparison_df['Metric'] == metric].iloc[0] if metric != 'MAPE (%)' else comparison_df[comparison_df['Metric'] == 'MAPE (%)'].iloc[0]
-                fig.add_trace(go.Bar(
-                    name=metric,
-                    x=['Prophet', 'ARIMA'],
-                    y=[row['Prophet'], row['ARIMA']],
-                    text=[f"{row['Prophet']:.2f}", f"{row['ARIMA']:.2f}"],
-                    textposition='auto'
-                ))
+                row = comparison_df[comparison_df['Metric'] == metric]
+                if not row.empty:
+                    row = row.iloc[0]
+                    fig.add_trace(go.Bar(
+                        name=metric,
+                        x=['Prophet', 'ARIMA'],
+                        y=[row['Prophet'], row['ARIMA']],
+                        text=[f"{row['Prophet']:.2f}", f"{row['ARIMA']:.2f}"],
+                        textposition='auto'
+                    ))
             
             fig.update_layout(
                 title="Model Performance Metrics (Lower is Better)",
