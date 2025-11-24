@@ -15,7 +15,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Configure Gemini API (Free model)
-genai.configure(api_key='AIzaSyAh8V9j_NC3v45NqizQoVZQ0ZjevpBMymE')
+genai.configure(api_key="[[[[[[[[[[[[[[[[[[[[ADD API KEY HERE]]]]]]]]]]]]]]]]]]]]")
 model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
 # ============================================================================
